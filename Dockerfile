@@ -28,14 +28,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Create necessary directories with proper permissions
-RUN mkdir -p uploads downloads
-
 # Create non-root user for security
-RUN useradd --create-home --shell /bin/bash appuser && \
+RUN useradd --create-home --shell /bin/bash appuser
+
+# Create necessary directories with proper permissions AFTER copying
+RUN mkdir -p uploads downloads && \
     chown -R appuser:appuser /app && \
     chmod -R 755 /app && \
-    chmod -R 777 uploads downloads
+    chmod -R 777 /app/uploads /app/downloads
+
 USER appuser
 
 # Expose port 1881
