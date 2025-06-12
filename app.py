@@ -118,7 +118,30 @@ def upload():
         upload_filename = f"{unique_id}_{original_filename}"
         upload_path = os.path.join(app.config['UPLOAD_FOLDER'], upload_filename)
         
-        file.save(upload_path)
+        # Ensure upload directory exists and is writable
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        
+        # Try to create a test file to check permissions
+        test_file_path = os.path.join(app.config['UPLOAD_FOLDER'], '.permission_test')
+        try:
+            with open(test_file_path, 'w') as test_file:
+                test_file.write('test')
+            os.remove(test_file_path)
+        except (PermissionError, OSError) as e:
+            logger.error(f"Upload directory permission test failed: {e}")
+            flash('Upload directory permissions error. Please check Docker container setup.', 'error')
+            return redirect(url_for('index'))
+        
+        try:
+            file.save(upload_path)
+        except PermissionError as e:
+            logger.error(f"Permission error saving file to {upload_path}: {e}")
+            flash('Permission error: Unable to save uploaded file. Please check directory permissions.', 'error')
+            return redirect(url_for('index'))
+        except Exception as e:
+            logger.error(f"Error saving file to {upload_path}: {e}")
+            flash(f'Error saving file: {str(e)}', 'error')
+            return redirect(url_for('index'))
         logger.info(f"File uploaded: {upload_path}")
         
         # Get form data
@@ -276,9 +299,16 @@ def manual_cleanup():
 
 
 if __name__ == '__main__':
-    # Create necessary directories
+    # Create necessary directories with proper permissions
+    import stat
     for folder in ['uploads', 'downloads', 'static', 'templates']:
-        os.makedirs(folder, exist_ok=True)
+        try:
+            os.makedirs(folder, exist_ok=True)
+            # Set directory permissions to be writable (for Linux containers)
+            if folder in ['uploads', 'downloads']:
+                os.chmod(folder, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)  # 777 permissions
+        except Exception as e:
+            logger.warning(f"Could not create or set permissions for {folder}: {e}")
     
     # Clean up any existing files on startup
     logger.info("Cleaning up existing files on startup...")

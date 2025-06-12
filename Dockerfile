@@ -25,19 +25,27 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
-
-# Create non-root user for security
+# Create non-root user for security BEFORE copying files
 RUN useradd --create-home --shell /bin/bash appuser
 
-# Create necessary directories with proper permissions AFTER copying
+# Copy application code and set ownership
+COPY --chown=appuser:appuser . .
+
+# Copy and set up entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Create necessary directories with proper permissions and ownership
 RUN mkdir -p uploads downloads && \
     chown -R appuser:appuser /app && \
     chmod -R 755 /app && \
-    chmod -R 777 /app/uploads /app/downloads
+    chmod -R 777 uploads downloads && \
+    chown -R appuser:appuser uploads downloads
 
 USER appuser
+
+# Set entrypoint
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
 # Expose port 1881
 EXPOSE 1881

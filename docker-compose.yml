@@ -7,8 +7,8 @@ services:
     ports:
       - "1881:1881"
     volumes:
-      - ./uploads:/app/uploads
-      - ./downloads:/app/downloads
+      - uploads-data:/app/uploads
+      - downloads-data:/app/downloads
     environment:
       - FLASK_ENV=production
       - PYTHONUNBUFFERED=1
