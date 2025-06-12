@@ -51,35 +51,46 @@ def allowed_file(filename):
 
 
 def cleanup_old_files():
-    """Clean up old uploaded and generated files (older than 10 minutes)"""
+    """Clean up old uploaded and generated files (older than 2 minutes - AGGRESSIVE)"""
     import time
     current_time = time.time()
-    ten_minutes_ago = current_time - 600  # 10 minutes in seconds
+    two_minutes_ago = current_time - 120  # 2 minutes in seconds (reduced from 10 minutes)
     
     for folder in [app.config['UPLOAD_FOLDER'], app.config['DOWNLOAD_FOLDER']]:
         try:
+            if not os.path.exists(folder):
+                continue
             for filename in os.listdir(folder):
                 file_path = os.path.join(folder, filename)
-                if os.path.isfile(file_path):
+                if os.path.isfile(file_path) and not filename.startswith('.'):
                     file_time = os.path.getmtime(file_path)
-                    if file_time < ten_minutes_ago:
+                    if file_time < two_minutes_ago:
                         os.remove(file_path)
-                        logger.info(f"Cleaned up old file: {file_path}")
+                        logger.info(f"AGGRESSIVE cleanup - removed old file: {file_path}")
         except Exception as e:
             logger.warning(f"Error cleaning up files in {folder}: {e}")
 
 
 def cleanup_all_files():
-    """Clean up all files in upload and download folders immediately"""
+    """Clean up ALL files in upload and download folders immediately - ZERO PERSISTENCE"""
+    files_removed = 0
     for folder in [app.config['UPLOAD_FOLDER'], app.config['DOWNLOAD_FOLDER']]:
         try:
+            if not os.path.exists(folder):
+                continue
             for filename in os.listdir(folder):
                 file_path = os.path.join(folder, filename)
-                if os.path.isfile(file_path):
+                if os.path.isfile(file_path) and not filename.startswith('.'):
                     os.remove(file_path)
-                    logger.info(f"Cleaned up file: {file_path}")
+                    files_removed += 1
+                    logger.info(f"ZERO PERSISTENCE - removed file: {file_path}")
         except Exception as e:
             logger.warning(f"Error cleaning up files in {folder}: {e}")
+    
+    if files_removed > 0:
+        logger.info(f"ZERO PERSISTENCE CLEANUP: Removed {files_removed} files total")
+    else:
+        logger.debug("No files to clean up - server is clean")
 
 
 @app.route('/')
@@ -158,20 +169,26 @@ def upload():
         logger.info(f"Network type: {network_type}")
         logger.info(f"Include informational vulnerabilities: {include_informational}")
         
-        # Parse Nessus file
+        # Parse Nessus file and immediately clean up
         try:
             logger.info("Starting Nessus file parsing...")
             parsed_data = nessus_parser.parse_nessus_file(upload_path)
             summary_stats = nessus_parser.get_summary_stats(parsed_data)
+            
+            # IMMEDIATELY delete uploaded file after parsing - no persistence
+            if os.path.exists(upload_path):
+                os.remove(upload_path)
+                logger.info(f"IMMEDIATELY deleted uploaded file after parsing: {upload_path}")
             
             logger.info(f"Parsed {len(parsed_data)} hosts with {summary_stats['total_vulnerabilities']} vulnerabilities")
             
         except Exception as e:
             logger.error(f"Error parsing Nessus file: {e}")
             flash(f'Error parsing Nessus file: {str(e)}', 'error')
-            # Clean up uploaded file
+            # Clean up uploaded file on error
             if os.path.exists(upload_path):
                 os.remove(upload_path)
+                logger.info(f"Cleaned up uploaded file after error: {upload_path}")
             return redirect(url_for('index'))
         
         # Generate DOCX report
@@ -195,12 +212,8 @@ def upload():
                 os.remove(upload_path)
             return redirect(url_for('index'))
         
-        # Clean up uploaded file
-        try:
-            os.remove(upload_path)
-            logger.info(f"Cleaned up uploaded file: {upload_path}")
-        except Exception as e:
-            logger.warning(f"Could not remove uploaded file {upload_path}: {e}")
+        # Upload file already cleaned up after parsing - no action needed
+        logger.debug("Upload file already cleaned up after parsing - maintaining zero persistence")
         
         # Success - redirect to download
         flash('Report generated successfully!', 'success')
@@ -242,21 +255,38 @@ def download(filename):
             download_name=f"nessus_vulnerability_report_{datetime.now().strftime('%Y%m%d')}.docx"
         )
         
-        # Schedule file deletion after response is sent
+        # Immediately delete file after serving (aggressive cleanup)
         @response.call_on_close
         def delete_file():
             try:
-                # Delete the downloaded report file
+                # Delete the specific downloaded report file immediately
                 if os.path.exists(file_path):
                     os.remove(file_path)
-                    logger.info(f"Deleted downloaded file: {file_path}")
+                    logger.info(f"IMMEDIATELY deleted downloaded file: {file_path}")
                 
-                # Clean up ALL files in both uploads and downloads folders immediately
+                # Clean up ALL files in both uploads and downloads folders
                 cleanup_all_files()
-                logger.info("Cleaned up all upload and download files after download")
+                logger.info("AGGRESSIVE cleanup: Removed all upload and download files after user download")
                 
             except Exception as e:
-                logger.warning(f"Could not delete files: {e}")
+                logger.warning(f"Could not delete files during cleanup: {e}")
+        
+        # Also schedule a backup cleanup in case the above fails
+        import threading
+        def backup_cleanup():
+            import time
+            time.sleep(2)  # Wait 2 seconds then force cleanup
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                cleanup_all_files()
+                logger.info("Backup cleanup completed - no files should remain")
+            except Exception as e:
+                logger.warning(f"Backup cleanup failed: {e}")
+        
+        cleanup_thread = threading.Thread(target=backup_cleanup)
+        cleanup_thread.daemon = True
+        cleanup_thread.start()
         
         return response
         
@@ -298,6 +328,26 @@ def manual_cleanup():
     return redirect(url_for('index'))
 
 
+def start_periodic_cleanup():
+    """Start a background thread for periodic aggressive cleanup"""
+    import threading
+    import time
+    
+    def periodic_cleanup():
+        while True:
+            try:
+                time.sleep(60)  # Run every 1 minute
+                cleanup_old_files()
+                logger.debug("Periodic cleanup completed - ensuring zero persistence")
+            except Exception as e:
+                logger.warning(f"Periodic cleanup error: {e}")
+    
+    cleanup_thread = threading.Thread(target=periodic_cleanup)
+    cleanup_thread.daemon = True
+    cleanup_thread.start()
+    logger.info("Started periodic cleanup thread - runs every 60 seconds")
+
+
 if __name__ == '__main__':
     # Create necessary directories with proper permissions
     import stat
@@ -311,8 +361,11 @@ if __name__ == '__main__':
             logger.warning(f"Could not create or set permissions for {folder}: {e}")
     
     # Clean up any existing files on startup
-    logger.info("Cleaning up existing files on startup...")
+    logger.info("ZERO PERSISTENCE STARTUP: Cleaning up existing files...")
     cleanup_all_files()
+    
+    # Start periodic cleanup to ensure no files persist
+    start_periodic_cleanup()
     
     # Production server settings
     import os
