@@ -68,6 +68,10 @@ class DocxGenerator:
         # Group vulnerabilities by plugin_id and plugin_name
         vulnerability_groups = {}
         
+        # Debug logging
+        import logging
+        logging.info(f"Starting finding tables generation with {len(parsed_data)} hosts")
+        
         for host_data in parsed_data:
             host_ip = host_data.get('host_ip', 'Unknown')
             host_fqdn = host_data.get('host_fqdn', '')
@@ -81,6 +85,10 @@ class DocxGenerator:
                 plugin_id = vuln.get('plugin_id', '')
                 plugin_name = vuln.get('plugin_name', '')
                 vuln_key = f"{plugin_id}_{plugin_name}"
+                
+                # Debug CVE data type
+                cve_data = vuln.get('cves', [])
+                logging.debug(f"CVE data for {plugin_name}: {cve_data} (type: {type(cve_data)})")
                 
                 if vuln_key not in vulnerability_groups:
                     vulnerability_groups[vuln_key] = {
@@ -170,22 +178,39 @@ class DocxGenerator:
             # Prepare affected hosts list
             affected_hosts_text = ""
             for host in vuln['affected_hosts']:
-                host_line = f"{host['ip']}"
+                host_line = f"{str(host['ip'])}"
                 if host['fqdn']:
-                    host_line += f" ({host['fqdn']})"
+                    host_line += f" ({str(host['fqdn'])})"
                 if host['port']:
-                    host_line += f":{host['port']}/{host['protocol']}"
+                    host_line += f":{str(host['port'])}/{str(host['protocol'])}"
                 affected_hosts_text += host_line + "\n"
             
             # Generate PT code for this finding
             pt_code = f"PT-{customer_abbreviation}-{current_year}-{current_month:02d}-{code_prefix}{i:03d}"
             
             # Configure each row with exact formatting
+            # Debug CVE handling before using
+            cve_data = vuln['cves']
+            logging.debug(f"Processing CVE for table: {cve_data} (type: {type(cve_data)})")
+            
+            # Safe CVE handling with comprehensive type checking
+            try:
+                if isinstance(cve_data, list) and cve_data:
+                    cve_text = ', '.join(str(cve) for cve in cve_data)
+                elif isinstance(cve_data, str) and cve_data:
+                    cve_text = cve_data
+                else:
+                    cve_text = 'CVE bilgisi mevcut değil'
+                logging.debug(f"Final CVE text: {cve_text}")
+            except Exception as e:
+                logging.error(f"Error processing CVE data {cve_data}: {e}")
+                cve_text = 'CVE bilgisi mevcut değil'
+            
             rows_data = [
                 (pt_code, severity_map.get(vuln['severity'], 'BİLİNMEYEN SEVİYE')),
                 ("Bulgu Adı", vuln['plugin_name']),
-                ("CVE Kodu", ', '.join(vuln['cves']) if vuln['cves'] and isinstance(vuln['cves'], list) else str(vuln['cves']) if vuln['cves'] else 'CVE bilgisi mevcut değil'),
-                ("CVSS Skoru", f"{vuln['cvss_score'] if vuln['cvss_score'] else 'Skor bilgisi mevcut değil'}{' | ' + vuln['cvss_vector'] if vuln['cvss_vector'] else ''}"),
+                ("CVE Kodu", cve_text),
+                ("CVSS Skoru", f"{vuln['cvss_score'] if vuln['cvss_score'] else 'Skor bilgisi mevcut değil'}{' | ' + str(vuln['cvss_vector']) if vuln['cvss_vector'] else ''}"),
                 ("Bulgu Türü", "Güvenlik Zafiyeti"),
                 ("Bulgu Detayı", "Yapılan güvenlik testleri sonucunda ilgili sistemlerde belirtilen güvenlik zafiyetlerine rastlanmıştır.\n\nŞekil : Güvenlik zafiyeti tespitine yönelik ekran görüntüsü\n\nNOT: Ekran görüntüleri örneklem olarak paylaşılmıştır. Diğer sistemleri görmek için etkilenen bileşenlere bakınız."),
                 ("Erişim Noktası", "İnternet"),

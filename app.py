@@ -191,18 +191,40 @@ def upload():
                 logger.info(f"Cleaned up uploaded file after error: {upload_path}")
             return redirect(url_for('index'))
         
-        # Generate DOCX report
+        # Generate DOCX report (ZERO PERSISTENCE - use temporary file)
         try:
-            logger.info("Starting DOCX report generation...")
+            logger.info("Starting DOCX report generation (ZERO PERSISTENCE MODE)...")
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             report_filename = f"Nessus_Report_{timestamp}_{unique_id}.docx"
-            report_path = os.path.join(app.config['DOWNLOAD_FOLDER'], report_filename)
             
-            docx_generator.generate_report(parsed_data, summary_stats, report_path, 
+            # Use temporary file that gets deleted immediately
+            import tempfile
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.docx') as temp_file:
+                temp_report_path = temp_file.name
+                
+            logger.info(f"Generating report to temporary file: {temp_report_path}")
+            
+            docx_generator.generate_report(parsed_data, summary_stats, temp_report_path, 
                                          include_informational=include_informational,
                                          customer_abbreviation=customer_abbreviation,
                                          network_type=network_type)
-            logger.info(f"Report generated: {report_path}")
+            
+            logger.info(f"Report generated successfully in temp file")
+            
+            # Immediately read the file content and delete the temp file
+            with open(temp_report_path, 'rb') as temp_file:
+                report_content = temp_file.read()
+            
+            # Delete temporary file immediately
+            os.remove(temp_report_path)
+            logger.info("ZERO PERSISTENCE: Temporary report file deleted immediately")
+            
+            # Store report content in session for immediate download
+            import base64
+            session['report_content'] = base64.b64encode(report_content).decode('utf-8')
+            session['report_filename'] = f"nessus_vulnerability_report_{datetime.now().strftime('%Y%m%d')}.docx"
+            
+            logger.info("ZERO PERSISTENCE: Report stored in session for immediate download")
             
         except Exception as e:
             import traceback
@@ -221,7 +243,7 @@ def upload():
         flash('Report generated successfully!', 'success')
         return render_template('index.html', 
                              success=True, 
-                             generated_filename=report_filename)
+                             generated_filename='download_ready')
         
     except Exception as e:
         logger.error(f"Unexpected error in upload handler: {e}")
@@ -231,69 +253,58 @@ def upload():
 
 @app.route('/download/<filename>')
 def download(filename):
-    """Serve generated DOCX files for download and delete after serving"""
+    """Serve generated DOCX files from session (ZERO PERSISTENCE)"""
     try:
-        # Security check - ensure filename is safe
-        safe_filename = secure_filename(filename)
-        if safe_filename != filename:
-            logger.warning(f"Attempted to download unsafe filename: {filename}")
-            flash('Invalid file request', 'error')
+        # Check if report content exists in session
+        if 'report_content' not in session or 'report_filename' not in session:
+            logger.warning("No report found in session for download")
+            flash('No report available for download. Please generate a new report.', 'error')
             return redirect(url_for('index'))
         
-        # Check if file exists
-        file_path = os.path.join(app.config['DOWNLOAD_FOLDER'], filename)
-        if not os.path.exists(file_path):
-            logger.warning(f"Requested file not found: {file_path}")
-            flash('File not found', 'error')
-            return redirect(url_for('index'))
+        # Get report content from session
+        import base64
+        from io import BytesIO
         
-        logger.info(f"Serving file for download: {filename}")
+        report_content_b64 = session['report_content']
+        report_filename = session['report_filename']
         
-        # Create a response with the file
-        response = send_from_directory(
-            app.config['DOWNLOAD_FOLDER'], 
-            filename, 
-            as_attachment=True,
-            download_name=f"nessus_vulnerability_report_{datetime.now().strftime('%Y%m%d')}.docx"
+        # Decode the base64 content
+        report_content = base64.b64decode(report_content_b64)
+        
+        logger.info(f"ZERO PERSISTENCE: Serving report from session memory: {report_filename}")
+        
+        # Create response from memory
+        from flask import Response
+        response = Response(
+            report_content,
+            mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            headers={
+                'Content-Disposition': f'attachment; filename="{report_filename}"',
+                'Content-Length': str(len(report_content))
+            }
         )
         
-        # Immediately delete file after serving (aggressive cleanup)
+        # Clear session data immediately after serving
         @response.call_on_close
-        def delete_file():
+        def clear_session():
             try:
-                # Delete the specific downloaded report file immediately
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                    logger.info(f"IMMEDIATELY deleted downloaded file: {file_path}")
+                if 'report_content' in session:
+                    del session['report_content']
+                if 'report_filename' in session:
+                    del session['report_filename']
+                logger.info("ZERO PERSISTENCE: Session data cleared after download")
                 
-                # Clean up ALL files in both uploads and downloads folders
+                # Also run cleanup to ensure no files remain anywhere
                 cleanup_all_files()
-                logger.info("AGGRESSIVE cleanup: Removed all upload and download files after user download")
+                logger.info("ZERO PERSISTENCE: Full cleanup completed")
                 
             except Exception as e:
-                logger.warning(f"Could not delete files during cleanup: {e}")
-        
-        # Also schedule a backup cleanup in case the above fails
-        import threading
-        def backup_cleanup():
-            import time
-            time.sleep(2)  # Wait 2 seconds then force cleanup
-            try:
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                cleanup_all_files()
-                logger.info("Backup cleanup completed - no files should remain")
-            except Exception as e:
-                logger.warning(f"Backup cleanup failed: {e}")
-        
-        cleanup_thread = threading.Thread(target=backup_cleanup)
-        cleanup_thread.daemon = True
-        cleanup_thread.start()
+                logger.warning(f"Could not clear session during cleanup: {e}")
         
         return response
         
     except Exception as e:
-        logger.error(f"Error serving download: {e}")
+        logger.error(f"Error serving download from session: {e}")
         flash(f'Error downloading file: {str(e)}', 'error')
         return redirect(url_for('index'))
 
