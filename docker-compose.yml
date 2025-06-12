@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  kpmg-pfcg:
+    build: .
+    container_name: kpmg-pfcg-generator
+    ports:
+      - "1881:1881"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./downloads:/app/downloads
+    environment:
+      - FLASK_ENV=production
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1881/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - kpmg-network
+
+networks:
+  kpmg-network:
+    driver: bridge
+
+volumes:
+  uploads-data:
+  downloads-data: 

@@ -1,0 +1,61 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+uploads/*
+downloads/*
+
+# Documentation
+*.md
+README*
+
+# Test files
+tests/
+test_*
+
+# Development tools
+.cursorrules
+
+# Log files
+*.log
+
+# Environment files
+.env
+.env.local
+
+# Docker files (to avoid recursive copying)
+Dockerfile*
+docker-compose*
+
+# Build artifacts
+build/
+dist/
+*.egg-info/ 

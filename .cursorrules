@@ -1,0 +1,14 @@
+# Project Cursor Rules
+
+- Use Python 3.9+ for all backend logic.
+- Follow PEP 8 style guidelines for all Python code (linting enforced).
+- Include all necessary imports/dependencies and use clear, conventional naming appropriate for the project's language.
+- Minimize extraneous prose in code comments; focus on functional explanations.
+- Prefer standard library modules where feasible before introducing third-party dependencies.
+- When generating code, prioritize readability and maintainability.
+- Ensure all file paths are handled securely and cross-platform compatible (e.g., using os.path.join).
+- Implement robust error handling and logging throughout the application.
+- Follow Flask best practices for web application security.
+- Use secure filename handling for uploaded files.
+- Validate file extensions and implement upload size limits.
+- Preserve document formatting when manipulating DOCX files. 
