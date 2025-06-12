@@ -205,7 +205,9 @@ def upload():
             logger.info(f"Report generated: {report_path}")
             
         except Exception as e:
+            import traceback
             logger.error(f"Error generating DOCX report: {e}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             flash(f'Error generating report: {str(e)}', 'error')
             # Clean up uploaded file
             if os.path.exists(upload_path):
