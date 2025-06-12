@@ -14,7 +14,7 @@ git clone https://github.com/figbit/PFCG.git
 cd PFCG
 ```
 
-### 2. Tek Komutla Dağıt
+### 2. Tek Komutla Çalıştır
 
 **Windows:**
 ```batch
