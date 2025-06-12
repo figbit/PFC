@@ -191,47 +191,18 @@ def upload():
                 logger.info(f"Cleaned up uploaded file after error: {upload_path}")
             return redirect(url_for('index'))
         
-        # Generate DOCX report (ZERO PERSISTENCE - direct memory approach)
+        # Generate DOCX report
         try:
-            logger.info("Starting DOCX report generation (ZERO PERSISTENCE MODE)...")
+            logger.info("Starting DOCX report generation...")
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            report_filename = f"Nessus_Report_{timestamp}_{unique_id}.docx"
+            report_path = os.path.join(app.config['DOWNLOAD_FOLDER'], report_filename)
             
-            # Generate report directly to memory using BytesIO
-            from io import BytesIO
-            from docx import Document
-            
-            # Create document in memory
-            doc = Document()
-            
-            # Generate report content directly into the document
-            docx_generator._add_finding_tables_only(doc, parsed_data, 
-                                                   include_informational=include_informational,
-                                                   customer_abbreviation=customer_abbreviation,
-                                                   network_type=network_type)
-            
-            # Save document to memory buffer
-            memory_buffer = BytesIO()
-            doc.save(memory_buffer)
-            memory_buffer.seek(0)
-            
-            logger.info("ZERO PERSISTENCE: Report generated directly in memory")
-            
-            # Create download filename
-            timestamp = datetime.now().strftime('%Y%m%d')
-            download_filename = f"nessus_vulnerability_report_{timestamp}.docx"
-            
-            # Return file directly from memory
-            from flask import Response
-            response = Response(
-                memory_buffer.getvalue(),
-                mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                headers={
-                    'Content-Disposition': f'attachment; filename="{download_filename}"',
-                    'Content-Length': str(len(memory_buffer.getvalue()))
-                }
-            )
-            
-            logger.info("ZERO PERSISTENCE: Serving report directly from memory")
-            return response
+            docx_generator.generate_report(parsed_data, summary_stats, report_path, 
+                                         include_informational=include_informational,
+                                         customer_abbreviation=customer_abbreviation,
+                                         network_type=network_type)
+            logger.info(f"Report generated: {report_path}")
             
         except Exception as e:
             import traceback
@@ -243,13 +214,88 @@ def upload():
                 os.remove(upload_path)
             return redirect(url_for('index'))
         
+        # Upload file already cleaned up after parsing - no action needed
+        logger.debug("Upload file already cleaned up after parsing - maintaining zero persistence")
+        
+        # Success - redirect to download
+        flash('Report generated successfully!', 'success')
+        return render_template('index.html', 
+                             success=True, 
+                             generated_filename=report_filename)
+        
     except Exception as e:
         logger.error(f"Unexpected error in upload handler: {e}")
         flash(f'An unexpected error occurred: {str(e)}', 'error')
         return redirect(url_for('index'))
 
 
-# Download route removed - files now served directly from upload handler for true zero persistence
+@app.route('/download/<filename>')
+def download(filename):
+    """Serve generated DOCX files for download and delete after serving"""
+    try:
+        # Security check - ensure filename is safe
+        safe_filename = secure_filename(filename)
+        if safe_filename != filename:
+            logger.warning(f"Attempted to download unsafe filename: {filename}")
+            flash('Invalid file request', 'error')
+            return redirect(url_for('index'))
+        
+        # Check if file exists
+        file_path = os.path.join(app.config['DOWNLOAD_FOLDER'], filename)
+        if not os.path.exists(file_path):
+            logger.warning(f"Requested file not found: {file_path}")
+            flash('File not found', 'error')
+            return redirect(url_for('index'))
+        
+        logger.info(f"Serving file for download: {filename}")
+        
+        # Create a response with the file
+        response = send_from_directory(
+            app.config['DOWNLOAD_FOLDER'], 
+            filename, 
+            as_attachment=True,
+            download_name=f"nessus_vulnerability_report_{datetime.now().strftime('%Y%m%d')}.docx"
+        )
+        
+        # Immediately delete file after serving (aggressive cleanup)
+        @response.call_on_close
+        def delete_file():
+            try:
+                # Delete the specific downloaded report file immediately
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    logger.info(f"IMMEDIATELY deleted downloaded file: {file_path}")
+                
+                # Clean up ALL files in both uploads and downloads folders
+                cleanup_all_files()
+                logger.info("AGGRESSIVE cleanup: Removed all upload and download files after user download")
+                
+            except Exception as e:
+                logger.warning(f"Could not delete files during cleanup: {e}")
+        
+        # Also schedule a backup cleanup in case the above fails
+        import threading
+        def backup_cleanup():
+            import time
+            time.sleep(2)  # Wait 2 seconds then force cleanup
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                cleanup_all_files()
+                logger.info("Backup cleanup completed - no files should remain")
+            except Exception as e:
+                logger.warning(f"Backup cleanup failed: {e}")
+        
+        cleanup_thread = threading.Thread(target=backup_cleanup)
+        cleanup_thread.daemon = True
+        cleanup_thread.start()
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error serving download: {e}")
+        flash(f'Error downloading file: {str(e)}', 'error')
+        return redirect(url_for('index'))
 
 
 @app.errorhandler(413)

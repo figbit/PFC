@@ -1,3 +1,0 @@
-# This file ensures the uploads directory is tracked by Git
-# The directory itself is needed for the application to function
-# All uploaded files are immediately deleted after processing (zero persistence) 
