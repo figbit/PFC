@@ -62,6 +62,32 @@ docker-compose logs -f
 docker-compose restart
 ```
 
+## 🔧 Sorun Giderme
+
+### Linux'ta İzin Hatası
+Eğer "Permission denied" hatası alıyorsanız:
+
+```bash
+# Konteyner durdurun
+docker-compose down
+
+# Son değişiklikleri çekin
+git pull origin main
+
+# Eski imajları silin ve yeniden oluşturun
+docker-compose down --rmi all
+docker-compose up --build -d
+```
+
+### Upload Klasörü İzin Sorunu
+Hala sorun devam ediyorsa:
+
+```bash
+# Host sistemde klasörler oluşturun
+sudo mkdir -p uploads downloads
+sudo chmod 777 uploads downloads
+```
+
 ## ⚠️ Önemli
 
 - Yalnızca yetkili penetrasyon testleri için

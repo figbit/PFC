@@ -184,7 +184,7 @@ class DocxGenerator:
             rows_data = [
                 (pt_code, severity_map.get(vuln['severity'], 'BİLİNMEYEN SEVİYE')),
                 ("Bulgu Adı", vuln['plugin_name']),
-                ("CVE Kodu", ', '.join(vuln['cves']) if vuln['cves'] else 'CVE bilgisi mevcut değil'),
+                ("CVE Kodu", ', '.join(vuln['cves']) if vuln['cves'] and isinstance(vuln['cves'], list) else str(vuln['cves']) if vuln['cves'] else 'CVE bilgisi mevcut değil'),
                 ("CVSS Skoru", f"{vuln['cvss_score'] if vuln['cvss_score'] else 'Skor bilgisi mevcut değil'}{' | ' + vuln['cvss_vector'] if vuln['cvss_vector'] else ''}"),
                 ("Bulgu Türü", "Güvenlik Zafiyeti"),
                 ("Bulgu Detayı", "Yapılan güvenlik testleri sonucunda ilgili sistemlerde belirtilen güvenlik zafiyetlerine rastlanmıştır.\n\nŞekil : Güvenlik zafiyeti tespitine yönelik ekran görüntüsü\n\nNOT: Ekran görüntüleri örneklem olarak paylaşılmıştır. Diğer sistemleri görmek için etkilenen bileşenlere bakınız."),
@@ -555,7 +555,7 @@ class DocxGenerator:
                 ('Severity', vuln['severity']),
                 ('CVSS Score', vuln['cvss_score']),
                 ('CVSS Vector', vuln['cvss_vector']),
-                ('CVE(s)', ', '.join(vuln['cves']) if vuln['cves'] else 'N/A'),
+                ('CVE(s)', ', '.join(vuln['cves']) if vuln['cves'] and isinstance(vuln['cves'], list) else str(vuln['cves']) if vuln['cves'] else 'N/A'),
                 ('Risk Factor', vuln['risk_factor']),
                 ('Links/References', links_text)
             ]
