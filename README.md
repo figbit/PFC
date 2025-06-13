@@ -10,8 +10,8 @@ Penetrasyon test ekipleri için Nessus XML dosyalarını profesyonel Word belgel
 
 ### 1. GitHub'dan Klonla
 ```bash
-git clone https://github.com/figbit/PFCG.git
-cd PFCG
+git clone https://github.com/figbit/PFC.git
+cd PFC
 ```
 
 ### 2. Tek Komutla Çalıştır
